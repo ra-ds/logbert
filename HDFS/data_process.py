@@ -1,5 +1,5 @@
 import sys
-sys.path.append('../')
+sys.path.extend(['../', './'])
 
 import os
 import re
@@ -11,21 +11,13 @@ import numpy as np
 from logparser import Spell, Drain
 
 # get [log key, delta time] as input for deeplog
-input_dir  = os.path.expanduser('~/.dataset/hdfs/')
-output_dir = '../output/hdfs/'  # The output directory of parsing results
-log_file   = "HDFS.log"  # The input log file name
+input_dir  = os.path.expanduser('/snap-l40s-x1/root/raphael/logbert/')
+output_dir = '../output/'  # The output directory of parsing results
+log_file   = "log_router_2024_07.log"  # The input log file name
 
-log_structured_file = output_dir + log_file + "_structured.csv"
-log_templates_file = output_dir + log_file + "_templates.csv"
-log_sequence_file = output_dir + "hdfs_sequence.csv"
-
-def mapping():
-    log_temp = pd.read_csv(log_templates_file)
-    log_temp.sort_values(by = ["Occurrences"], ascending=False, inplace=True)
-    log_temp_dict = {event: idx+1 for idx , event in enumerate(list(log_temp["EventId"])) }
-    print(log_temp_dict)
-    with open (output_dir + "hdfs_log_templates.json", "w") as f:
-        json.dump(log_temp_dict, f)
+log_structured_file = output_dir + "log_router_2024_07_structured.csv"
+log_templates_file = output_dir + "log_router_2024_07_templates.csv"
+log_sequence_file = output_dir + "log_router_2024_07_sequence.csv"
 
 
 def parser(input_dir, output_dir, log_file, log_format, type='drain'):
@@ -42,27 +34,36 @@ def parser(input_dir, output_dir, log_file, log_format, type='drain'):
 
     elif type == 'drain':
         regex = [
-            r"(?<=blk_)[-\d]+", # block_id
-            r'\d+\.\d+\.\d+\.\d+',  # IP
-            r"(/[-\w]+)+",  # file path
+            r'(|)([0-9]+\.){3}[0-9]+(:[0-9]+|)(:|)', # IP
+            r'[0-9]+'
+            # r"(?<=blk_)[-\d]+", # block_id
+            # r'\d+\.\d+\.\d+\.\d+',  # IP
+            # r"(/[-\w]+)+",  # file path
             #r'(?<=[^A-Za-z0-9])(\-?\+?\d+)(?=[^A-Za-z0-9])|[0-9]+$',  # Numbers
         ]
         # the hyper parameter is set according to http://jmzhu.logpai.com/pub/pjhe_icws2017.pdf
         st = 0.5  # Similarity threshold
-        depth = 5  # Depth of all leaf nodes
-
-
+        depth = 4  # Depth of all leaf nodes
         parser = Drain.LogParser(log_format, indir=input_dir, outdir=output_dir, depth=depth, st=st, rex=regex, keep_para=False)
         parser.parse(log_file)
+
+
+def mapping():
+    log_temp = pd.read_csv(log_templates_file)
+    log_temp.sort_values(by = ["Occurrences"], ascending=False, inplace=True)
+    log_temp_dict = {event: idx+1 for idx , event in enumerate(list(log_temp["EventId"])) }
+    print(log_temp_dict)
+    with open (output_dir + "log_router_2024_07_templates.json", "w") as f:
+        json.dump(log_temp_dict, f)
 
 
 def hdfs_sampling(log_file, window='session'):
     assert window == 'session', "Only window=session is supported for HDFS dataset."
     print("Loading", log_file)
     df = pd.read_csv(log_file, engine='c',
-            na_filter=False, memory_map=True, dtype={'Date':object, "Time": object})
+            na_filter=False, memory_map=True, dtype={'datetime':object})
 
-    with open(output_dir + "hdfs_log_templates.json", "r") as f:
+    with open(output_dir + "log_router_2024_07_templates.json", "r") as f:
         event_num = json.load(f)
     df["EventId"] = df["EventId"].apply(lambda x: event_num.get(x, -1))
 
@@ -115,8 +116,8 @@ def df_to_file(df, file_name):
 
 if __name__ == "__main__":
     # 1. parse HDFS log
-    log_format = '<Date> <Time> <Pid> <Level> <Component>: <Content>'  # HDFS log format
+    log_format = '<datetime> <router>(/<ip_adress>) <Content>'  # HDFS log format
     parser(input_dir, output_dir, log_file, log_format, 'drain')
     mapping()
-    hdfs_sampling(log_structured_file)
-    generate_train_test(log_sequence_file, n=4855)
+    # hdfs_sampling(log_structured_file)
+    # generate_train_test(log_sequence_file, n=4855)
